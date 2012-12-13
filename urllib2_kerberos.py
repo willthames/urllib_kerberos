@@ -24,15 +24,7 @@ import urllib2 as u2
 
 import kerberos as k
 
-def getLogger():
-    log = logging.getLogger("http_kerberos_auth_handler")
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-    handler.setFormatter(formatter)
-    log.addHandler(handler)
-    return log
-
-log = getLogger()
+log = logging.getLogger("http_kerberos_auth_handler")
 
 class AbstractKerberosAuthHandler:
     """auth handler for urllib2 that does Kerberos HTTP Negotiate Authentication
