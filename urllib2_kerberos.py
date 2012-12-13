@@ -169,7 +169,8 @@ class HTTPKerberosAuthHandler(u2.BaseHandler, AbstractKerberosAuthHandler):
         return retry
 
 def test():
-    log.setLevel(logging.DEBUG)
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s',
+            level=logging.DEBUG)
     log.info("starting test")
     opener = u2.build_opener()
     opener.add_handler(HTTPKerberosAuthHandler())
