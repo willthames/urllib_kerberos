@@ -49,9 +49,6 @@ class AbstractKerberosAuthHandler:
 
     def __init__(self, password_mgr=None):
         """Initialize an instance of a AbstractKerberosAuthHandler."""
-        self.retried = 0
-        self.context = None
-
         if password_mgr is None:
             password_mgr = HTTPPasswordMgr()
         self.passwd = password_mgr
@@ -78,8 +75,8 @@ class AbstractKerberosAuthHandler:
         return None
 
     def generate_request_header(self, req, headers, neg_value):
-        self.retried += 1
-        log.debug("retry count: %d" % self.retried)
+        req.kerberos_retried += 1
+        log.debug("retry count: %d" % req.kerberos_retried)
 
         host = urlparse(req.get_full_url()).netloc
         log.debug("urlparse(req.get_full_url()).netloc returned %s" % host)
@@ -94,7 +91,7 @@ class AbstractKerberosAuthHandler:
             kwargs['principal'] = user
             kwargs['password'] = password
 
-        result, self.context = k.authGSSClientInit("HTTP@%s" % domain,
+        result, req.kerberos_context = k.authGSSClientInit("HTTP@%s" % domain,
                                                    **kwargs)
 
         if result < 1:
@@ -103,7 +100,7 @@ class AbstractKerberosAuthHandler:
 
         log.debug("authGSSClientInit() succeeded")
 
-        result = k.authGSSClientStep(self.context, neg_value)
+        result = k.authGSSClientStep(req.kerberos_context, neg_value)
 
         if result < 0:
             log.warning("authGSSClientStep returned result %d" % result)
@@ -111,18 +108,18 @@ class AbstractKerberosAuthHandler:
 
         log.debug("authGSSClientStep() succeeded")
 
-        response = k.authGSSClientResponse(self.context)
+        response = k.authGSSClientResponse(req.kerberos_context)
         log.debug("authGSSClientResponse() succeeded")
 
         return "Negotiate %s" % response
 
-    def authenticate_server(self, headers):
+    def authenticate_server(self, req, headers):
         neg_value = self.negotiate_value(headers)
         if neg_value is None:
             log.critical("mutual auth failed. No negotiate header")
             return None
 
-        result = k.authGSSClientStep(self.context, neg_value)
+        result = k.authGSSClientStep(req.kerberos_context, neg_value)
 
         if result < 1:
             # this is a critical security warning
@@ -131,21 +128,25 @@ class AbstractKerberosAuthHandler:
                          "returned result %d" % result)
             pass
 
-    def clean_context(self):
-        if self.context is not None:
+    def clean_context(self, req):
+        if req.kerberos_context is not None:
             log.debug("cleaning context")
-            k.authGSSClientClean(self.context)
-            self.context = None
+            k.authGSSClientClean(req.kerberos_context)
+            req.kerberos_context = None
 
     def http_error_auth_reqed(self, host, req, headers):
+        if not hasattr(req, 'kerberos_retried'):
+            req.kerberos_retried = 0
+        if not hasattr(req, 'kerberos_context'):
+            req.kerberos_context = None
         neg_value = self.negotiate_value(headers)  # Check for auth_header
         if neg_value is not None:
-            if not self.retried > 0:
+            if not req.kerberos_retried > 0:
                 return self.retry_http_kerberos_auth(req, headers, neg_value)
             else:
                 return None
         else:
-            self.retried = 0
+            req.kerberos_retried = 0
 
     def retry_http_kerberos_auth(self, req, headers, neg_value):
         try:
@@ -159,18 +160,18 @@ class AbstractKerberosAuthHandler:
             resp = self.parent.open(req)
 
             if resp.getcode() != 200:
-                self.authenticate_server(resp.info())
+                self.authenticate_server(req, resp.info())
 
             return resp
 
         except k.GSSError as e:
-            self.clean_context()
-            self.retried = 0
+            self.clean_context(req)
+            req.kerberos_retried = 0
             log.critical("GSSAPI Error: %s/%s" % (e[0][0], e[1][0]))
             return None
 
-        self.clean_context()
-        self.retried = 0
+        self.clean_context(req)
+        req.kerberos_retried = 0
 
 
 class ProxyKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
@@ -186,7 +187,7 @@ class ProxyKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
         log.debug("inside http_error_407")
         host = urlparse(req.get_full_url()).netloc
         retry = self.http_error_auth_reqed(host, req, headers)
-        self.retried = 0
+        req.kerberos_retried = 0
         return retry
 
 
@@ -203,5 +204,5 @@ class HTTPKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
         log.debug("inside http_error_401")
         host = urlparse(req.get_full_url()).netloc
         retry = self.http_error_auth_reqed(host, req, headers)
-        self.retried = 0
+        req.kerberos_retried = 0
         return retry
