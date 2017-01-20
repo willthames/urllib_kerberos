@@ -34,7 +34,7 @@ try:
     import kerberos as k
 except ImportError:
     if sys.platform == 'win32':
-        import kerberos_sspi as k
+        import winkerberos as k
     else:
         raise SystemExit("Could not import kerberos library. Please ensure "
                          "it is installed")
@@ -47,8 +47,9 @@ class AbstractKerberosAuthHandler:
     """auth handler for urllib2 that does Kerberos
        HTTP Negotiate Authentication"""
 
-    def __init__(self, password_mgr=None):
+    def __init__(self, mech_oid, password_mgr):
         """Initialize an instance of a AbstractKerberosAuthHandler."""
+        self.mech_oid = mech_oid
         if password_mgr is None:
             password_mgr = HTTPPasswordMgr()
         self.passwd = password_mgr
@@ -90,6 +91,8 @@ class AbstractKerberosAuthHandler:
         if user and password:
             kwargs['principal'] = user
             kwargs['password'] = password
+
+        kwargs['mech_oid'] = self.mech_oid
 
         result, req.kerberos_context = k.authGSSClientInit("HTTP@%s" % domain,
                                                    **kwargs)
@@ -183,6 +186,9 @@ class ProxyKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
 
     handler_order = 480  # before Digest auth
 
+    def __init__(self, password_mgr=None):
+        AbstractKerberosAuthHandler.__init__(self, k.GSS_MECH_OID_KRB5, password_mgr)
+
     def http_error_407(self, req, fp, code, msg, headers):
         log.debug("inside http_error_407")
         host = urlparse(req.get_full_url()).netloc
@@ -199,6 +205,28 @@ class HTTPKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
     auth_header = 'www-authenticate'
 
     handler_order = 480  # before Digest auth
+
+    def __init__(self, password_mgr=None):
+        AbstractKerberosAuthHandler.__init__(self, k.GSS_MECH_OID_KRB5, password_mgr)
+
+    def http_error_401(self, req, fp, code, msg, headers):
+        log.debug("inside http_error_401")
+        host = urlparse(req.get_full_url()).netloc
+        retry = self.http_error_auth_reqed(host, req, headers)
+        req.kerberos_retried = 0
+        return retry
+
+class HTTPSpnegoAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
+    """Spnego Negotiation handler for HTTP auth
+    """
+
+    authz_header = 'Authorization'
+    auth_header = 'www-authenticate'
+
+    handler_order = 480  # before Digest auth
+
+    def __init__(self, password_mgr=None):
+        AbstractKerberosAuthHandler.__init__(self, k.GSS_MECH_OID_SPNEGO, password_mgr)
 
     def http_error_401(self, req, fp, code, msg, headers):
         log.debug("inside http_error_401")
