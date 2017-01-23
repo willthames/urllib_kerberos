@@ -39,7 +39,6 @@ except ImportError:
         raise SystemExit("Could not import kerberos library. Please ensure "
                          "it is installed")
 
-
 log = logging.getLogger("http_kerberos_auth_handler")
 
 
@@ -75,10 +74,7 @@ class AbstractKerberosAuthHandler:
 
         return None
 
-    def generate_request_header(self, req, headers, neg_value):
-        req.kerberos_retried += 1
-        log.debug("retry count: %d" % req.kerberos_retried)
-
+    def generate_request_header(self, req, neg_value):
         host = urlparse(req.get_full_url()).netloc
         log.debug("urlparse(req.get_full_url()).netloc returned %s" % host)
 
@@ -95,7 +91,7 @@ class AbstractKerberosAuthHandler:
         kwargs['mech_oid'] = self.mech_oid
 
         result, req.kerberos_context = k.authGSSClientInit("HTTP@%s" % domain,
-                                                   **kwargs)
+                                                           **kwargs)
 
         if result < 1:
             log.warning("authGSSClientInit returned result %d" % result)
@@ -137,23 +133,19 @@ class AbstractKerberosAuthHandler:
             k.authGSSClientClean(req.kerberos_context)
             req.kerberos_context = None
 
-    def http_error_auth_reqed(self, host, req, headers):
-        if not hasattr(req, 'kerberos_retried'):
-            req.kerberos_retried = 0
-        if not hasattr(req, 'kerberos_context'):
-            req.kerberos_context = None
-        neg_value = self.negotiate_value(headers)  # Check for auth_header
-        if neg_value is not None:
-            if not req.kerberos_retried > 0:
-                return self.retry_http_kerberos_auth(req, headers, neg_value)
-            else:
-                return None
-        else:
-            req.kerberos_retried = 0
+    def http_error_auth_reqed(self, req, headers):
+        if hasattr(req, 'kerberos_context'):
+            return None
 
-    def retry_http_kerberos_auth(self, req, headers, neg_value):
+        neg_value = self.negotiate_value(headers)  # Check for auth_header
+        if neg_value is None:
+            return None
+
+        return self.retry_http_kerberos_auth(req, neg_value)
+
+    def retry_http_kerberos_auth(self, req, neg_value):
         try:
-            neg_hdr = self.generate_request_header(req, headers, neg_value)
+            neg_hdr = self.generate_request_header(req, neg_value)
 
             if neg_hdr is None:
                 log.debug("neg_hdr was None")
@@ -168,13 +160,11 @@ class AbstractKerberosAuthHandler:
             return resp
 
         except k.GSSError as e:
-            self.clean_context(req)
-            req.kerberos_retried = 0
             log.critical("GSSAPI Error: %s/%s" % (e[0][0], e[1][0]))
             return None
 
-        self.clean_context(req)
-        req.kerberos_retried = 0
+        finally:
+            self.clean_context(req)
 
 
 class ProxyKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
@@ -191,10 +181,7 @@ class ProxyKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
 
     def http_error_407(self, req, fp, code, msg, headers):
         log.debug("inside http_error_407")
-        host = urlparse(req.get_full_url()).netloc
-        retry = self.http_error_auth_reqed(host, req, headers)
-        req.kerberos_retried = 0
-        return retry
+        return self.http_error_auth_reqed(req, headers)
 
 
 class HTTPKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
@@ -211,10 +198,8 @@ class HTTPKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
 
     def http_error_401(self, req, fp, code, msg, headers):
         log.debug("inside http_error_401")
-        host = urlparse(req.get_full_url()).netloc
-        retry = self.http_error_auth_reqed(host, req, headers)
-        req.kerberos_retried = 0
-        return retry
+        return self.http_error_auth_reqed(req, headers)
+
 
 class HTTPSpnegoAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
     """Spnego Negotiation handler for HTTP auth
@@ -230,7 +215,4 @@ class HTTPSpnegoAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
 
     def http_error_401(self, req, fp, code, msg, headers):
         log.debug("inside http_error_401")
-        host = urlparse(req.get_full_url()).netloc
-        retry = self.http_error_auth_reqed(host, req, headers)
-        req.kerberos_retried = 0
-        return retry
+        return self.http_error_auth_reqed(req, headers)
