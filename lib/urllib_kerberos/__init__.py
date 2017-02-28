@@ -46,7 +46,7 @@ class AbstractKerberosAuthHandler:
     """auth handler for urllib2 that does Kerberos
        HTTP Negotiate Authentication"""
 
-    def __init__(self, mech_oid, password_mgr):
+    def __init__(self, password_mgr, mech_oid=k.GSS_MECH_OID_KRB5):
         """Initialize an instance of a AbstractKerberosAuthHandler."""
         self.mech_oid = mech_oid
         if password_mgr is None:
@@ -177,7 +177,7 @@ class ProxyKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
     handler_order = 480  # before Digest auth
 
     def __init__(self, password_mgr=None):
-        AbstractKerberosAuthHandler.__init__(self, k.GSS_MECH_OID_KRB5, password_mgr)
+        AbstractKerberosAuthHandler.__init__(self, password_mgr)
 
     def http_error_407(self, req, fp, code, msg, headers):
         log.debug("inside http_error_407")
@@ -194,7 +194,7 @@ class HTTPKerberosAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
     handler_order = 480  # before Digest auth
 
     def __init__(self, password_mgr=None):
-        AbstractKerberosAuthHandler.__init__(self, k.GSS_MECH_OID_KRB5, password_mgr)
+        AbstractKerberosAuthHandler.__init__(self, password_mgr)
 
     def http_error_401(self, req, fp, code, msg, headers):
         log.debug("inside http_error_401")
@@ -211,7 +211,7 @@ class HTTPSpnegoAuthHandler(BaseHandler, AbstractKerberosAuthHandler):
     handler_order = 480  # before Digest auth
 
     def __init__(self, password_mgr=None):
-        AbstractKerberosAuthHandler.__init__(self, k.GSS_MECH_OID_SPNEGO, password_mgr)
+        AbstractKerberosAuthHandler.__init__(self, password_mgr, k.GSS_MECH_OID_SPNEGO)
 
     def http_error_401(self, req, fp, code, msg, headers):
         log.debug("inside http_error_401")
