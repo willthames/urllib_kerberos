@@ -46,7 +46,7 @@ class AbstractKerberosAuthHandler:
     """auth handler for urllib2 that does Kerberos
        HTTP Negotiate Authentication"""
 
-    def __init__(self, password_mgr, mech_oid=k.GSS_MECH_OID_KRB5):
+    def __init__(self, password_mgr=None, mech_oid=k.GSS_MECH_OID_KRB5):
         """Initialize an instance of a AbstractKerberosAuthHandler."""
         self.mech_oid = mech_oid
         if password_mgr is None:
