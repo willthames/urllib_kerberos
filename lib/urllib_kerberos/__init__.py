@@ -158,7 +158,7 @@ class AbstractKerberosAuthHandler:
             req.add_unredirected_header(self.authz_header, neg_hdr)
             resp = self.parent.open(req)
 
-            if resp.getcode() != 200:
+            if resp.getcode() < 200 or resp.getcode() > 299:
                 self.authenticate_server(resp.info())
 
             return resp
