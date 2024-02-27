@@ -34,7 +34,10 @@ try:
     import kerberos as k
 except ImportError:
     if sys.platform == 'win32':
-        import kerberos_sspi as k
+        try:
+            import winkerberos as k
+        except ImportError:
+            import kerberos_sspi as k
     else:
         raise SystemExit("Could not import kerberos library. Please ensure "
                          "it is installed")
